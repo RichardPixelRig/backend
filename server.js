@@ -6,6 +6,8 @@ import authRoutes from './routes/auth.js';
 import communityRoutes from './routes/community.js';
 import buildsRoutes from "./routes/builds.js";
 import pollRoutes from "./routes/polls.js";
+import guideRoutes from "./routes/guides.js";
+
 
 dotenv.config();
 
@@ -21,6 +23,7 @@ app.use('/api', authRoutes); // Handles: /api/register, /api/login, /api/me
 app.use('/api/community', communityRoutes); // Handles threads & replies
 app.use("/api/builds", buildsRoutes);
 app.use("/api/polls", pollRoutes);
+app.use("/api/guides", guideRoutes);
 
 
 // Base test route
