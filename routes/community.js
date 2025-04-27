@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { containsProfanity } from '../utils/profanityFilter.js';
+import jwt from "jsonwebtoken";
 
 import Thread from '../models/Thread.js';
 import Reply from '../models/Reply.js';
@@ -218,24 +219,85 @@ router.post('/:id/reply', async (req, res) => {
 
 
 // Delete a thread and its replies
-router.delete('/:id', async (req, res) => {
+
+
+// DELETE a build by ID (with optional reason and notification)
+router.delete("/id/:id", async (req, res) => {
   try {
-    const thread = await Thread.findById(req.params.id);
-    if (!thread) return res.status(404).json({ message: 'Thread not found' });
+    const { id } = req.params;
+    const { reason } = req.body; // 👈 Receive reason from body
 
-    await Reply.deleteMany({ threadId: thread._id });
-    await thread.deleteOne();
+    const build = await Build.findById(id);
+    if (!build) return res.status(404).json({ message: "Build not found" });
 
-    res.json({ message: 'Thread and replies deleted successfully' });
+    const buildOwner = await User.findById(build.user);
+
+    if (buildOwner) {
+      // Create a notification for the user
+      const notification = new Notification({
+        userId: buildOwner._id,
+        buildId: build._id,
+        pixelRigLink: build.pixelRigLink,
+        message: reason 
+          ? `🛑 Your build "${build.title}" was removed: ${reason}`
+          : `🛑 Your build "${build.title}" was removed by an admin.`,
+        seen: false,
+        type: "build-deleted",
+      });
+
+      await notification.save();
+
+      // Optional: If using socket.io for real-time notifications
+      setTimeout(() => {
+        global?.io?.emit("notifications-updated", buildOwner._id);
+      }, 100);
+    }
+
+    await build.deleteOne();
+
+    res.json({ message: "Build deleted successfully" });
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    console.error("❌ Failed to delete build:", err);
+    res.status(500).json({ message: "Failed to delete build" });
   }
 });
+
+
 
 
 // Delete a reply and its children
 router.delete('/reply/:replyId', async (req, res) => {
   try {
+    const { replyId } = req.params;
+    const reason = req.query.reason || "";
+
+    const authHeader = req.headers.authorization;
+    let userId = null;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.id;
+    }
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const requestingUser = await User.findById(userId);
+    const isAdmin = requestingUser?.isAdmin;
+
+    const reply = await Reply.findById(replyId);
+    if (!reply) return res.status(404).json({ message: "Reply not found" });
+
+    const isAuthor = reply.author === requestingUser.username;
+    const thread = await Thread.findById(reply.threadId);
+    if (!thread) return res.status(404).json({ message: "Thread not found" });
+
+    // 🧠 Only author or admin can delete
+    if (!isAuthor && !isAdmin) {
+      return res.status(403).json({ message: "You can only delete your own replies." });
+    }
+
+    // ✂️ Recursive function to delete reply and all its children
     const deleteReplyAndChildren = async (id) => {
       const children = await Reply.find({ parentReplyId: id });
 
@@ -243,17 +305,36 @@ router.delete('/reply/:replyId', async (req, res) => {
         await deleteReplyAndChildren(child._id);
       }
 
-      // 🔥 Remove related notifications
+      // Remove notifications related to this reply
       await Notification.deleteMany({ replyId: id });
 
       await Reply.findByIdAndDelete(id);
     };
 
-    await deleteReplyAndChildren(req.params.replyId);
+    await deleteReplyAndChildren(replyId);
 
-    res.json({ message: 'Reply and nested replies deleted successfully' });
+    // 🛎️ Send notification if admin deleted someone else's reply
+    if (isAdmin && !isAuthor) {
+      const replyOwner = await User.findOne({ username: reply.author });
+      if (replyOwner) {
+        const notification = new Notification({
+          userId: replyOwner._id,
+          threadId: thread._id,
+          message: `❌ Your reply on "${thread.title}" was deleted by an admin.${reason ? ` Reason: ${reason}` : ""}`,
+          type: "reply-deletion",
+          seen: false,
+        });
+        await notification.save();
+
+        global?.io?.emit("notifications-updated", replyOwner._id);
+      }
+    }
+
+    res.json({ message: "Reply and nested replies deleted successfully" });
+
   } catch (err) {
-    res.status(500).json({ message: 'Server error', error: err.message });
+    console.error("❌ Error deleting reply:", err.message);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 

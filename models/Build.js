@@ -26,7 +26,9 @@ const buildSchema = new mongoose.Schema({
   },
   likes: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" } }],
   dislikes: [{ userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" } }],
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+
+  featured: {type: Boolean, default: false }
 });
 
 

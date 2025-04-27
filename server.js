@@ -7,8 +7,11 @@ import communityRoutes from './routes/community.js';
 import buildsRoutes from "./routes/builds.js";
 import pollRoutes from "./routes/polls.js";
 import guideRoutes from "./routes/guides.js";
-
-
+import adminRoutes from "./routes/admin.js";  // Adjust path if needed
+import Visit from "./models/Visit.js"; // import Visit model
+import visitRoutes from "./routes/visit.js";
+import usersRouter from './routes/users.js'; // Adjust path if needed
+import challengeRoutes from "./routes/Challenge.js";
 dotenv.config();
 
 const app = express();
@@ -24,8 +27,23 @@ app.use('/api/community', communityRoutes); // Handles threads & replies
 app.use("/api/builds", buildsRoutes);
 app.use("/api/polls", pollRoutes);
 app.use("/api/guides", guideRoutes);
-
-
+app.use("/api/admin", adminRoutes);
+app.use('/api/users', usersRouter);  // ✅ MOUNT users router properly
+app.use("/api/visit", visitRoutes);
+app.use("/api/challenge", challengeRoutes);
+app.use(async (req, res, next) => {
+  try {
+    if (req.method === "GET") {
+      await Visit.create({
+        ipAddress: req.headers["x-forwarded-for"] || req.socket.remoteAddress,
+        userAgent: req.headers["user-agent"]
+      });
+    }
+  } catch (err) {
+    console.error("❌ Error tracking visit:", err.message);
+  }
+  next();
+});
 // Base test route
 app.get('/', (req, res) => {
   res.send('🎮 Pixel Rigs API is live!');

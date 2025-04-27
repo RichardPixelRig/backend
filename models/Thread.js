@@ -4,7 +4,9 @@ const threadSchema = new mongoose.Schema({
   title: String,
   content: String,
   author: String,
-  topic: { type: String, default: "General" }, // ✅ new
+  topic: { type: String, default: "General" }, 
+  createdAt: { type: Date, default: Date.now }
+// ✅ new
 }, { timestamps: true });
 
 

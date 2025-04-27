@@ -13,13 +13,31 @@ const router = express.Router();
 // GET all builds
 router.get("/", async (req, res) => {
   try {
-    const builds = await Build.find().sort({ createdAt: -1 });
+    const builds = await Build.find()
+  .sort({ createdAt: -1 })
+  .populate("user", "username"); // <-- add this
+
     res.json(builds);
   } catch (err) {
     console.error("❌ Error fetching builds:", err);
     res.status(500).json({ message: "Failed to fetch builds" });
   }
 });
+
+
+// Get featured builds
+// Get featured builds
+router.get('/featured', async (req, res) => {
+  try {
+    const featuredBuilds = await Build.find({ featured: true })
+      .populate("user", "username"); // 👈 ADD THIS to populate user info
+    res.json(featuredBuilds);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch featured builds", error: err.message });
+  }
+});
+
+
 
 // GET a build by slug
 
@@ -113,6 +131,22 @@ router.post("/", async (req, res) => {
     res.status(500).json({ message: "Failed to save build" });
   }
 });
+// Unfeature a build
+router.patch("/id/:id/unfeature", async (req, res) => {
+  try {
+    const build = await Build.findById(req.params.id);
+    if (!build) return res.status(404).json({ message: "Build not found" });
+
+    build.featured = false;
+    await build.save();
+
+    res.json({ message: "Build unfeatured successfully" });
+  } catch (err) {
+    console.error("❌ Error unfeaturing build:", err.message);
+    res.status(500).json({ message: "Failed to unfeature build" });
+  }
+});
+
 
 
 router.post("/:pixelRigLink/vote", async (req, res) => {
@@ -178,6 +212,35 @@ router.post("/:pixelRigLink/vote", async (req, res) => {
   } catch (err) {
     console.error("❌ Vote error:", err.message);
     res.status(500).json({ message: "Vote failed", error: err.message });
+  }
+});
+
+//featured notification
+router.post("/:pixelRigLink/feature", async (req, res) => {
+  try {
+    const build = await Build.findOne({ pixelRigLink: req.params.pixelRigLink });
+    if (!build) return res.status(404).json({ message: "Build not found" });
+
+    build.featured = true; // 🔥 Mark as featured
+    await build.save();
+
+    const buildOwner = await User.findById(build.user);
+    if (buildOwner) {
+      const notification = new Notification({
+        userId: buildOwner._id,
+        buildId: build._id,
+        pixelRigLink: build.pixelRigLink,
+        message: `🎉 Your build "${build.title}" was selected as a Featured Build!`,
+        type: "featured",
+        seen: false,
+      });
+      await notification.save();
+    }
+
+    res.status(200).json({ message: "Build featured and notification sent!" });
+  } catch (err) {
+    console.error("❌ Error featuring build:", err.message);
+    res.status(500).json({ message: "Server error", error: err.message });
   }
 });
 
@@ -267,16 +330,14 @@ if (parentCommentId) {
   }
 });
 
+
+
+// DELETE a comment and its nested replies
 // DELETE a comment and its nested replies
 router.delete("/:pixelRigLink/comments/:commentId", async (req, res) => {
   try {
     const { pixelRigLink, commentId } = req.params;
-
-    const build = await Build.findOne({ pixelRigLink });
-    if (!build) return res.status(404).json({ message: "Build not found" });
-
-    const commentToDelete = build.comments.find((c) => c._id.toString() === commentId);
-    if (!commentToDelete) return res.status(404).json({ message: "Comment not found" });
+    const reason = req.query.reason || "";
 
     const authHeader = req.headers.authorization;
     let userId = null;
@@ -287,8 +348,22 @@ router.delete("/:pixelRigLink/comments/:commentId", async (req, res) => {
       userId = decoded.id;
     }
 
-    // Make sure the requester is the author of the comment
-    if (commentToDelete.author.toString() !== userId) {
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const build = await Build.findOne({ pixelRigLink });
+    if (!build) return res.status(404).json({ message: "Build not found" });
+
+    const commentToDelete = build.comments.find((c) => c._id.toString() === commentId);
+    if (!commentToDelete) return res.status(404).json({ message: "Comment not found" });
+
+    const requestingUser = await User.findById(userId);
+    const isAdmin = requestingUser?.isAdmin;
+
+    const isAuthor = commentToDelete.author.toString() === userId;
+
+    if (!isAuthor && !isAdmin) {
       return res.status(403).json({ message: "You can only delete your own comments." });
     }
 
@@ -302,37 +377,91 @@ router.delete("/:pixelRigLink/comments/:commentId", async (req, res) => {
     };
 
     const idsToRemove = [commentId, ...collectNestedIds(commentId)];
-
-    // 💥 Remove from the build.comments array
-    build.comments = build.comments.filter(
-      (c) => !idsToRemove.includes(c._id.toString())
-    );
+    build.comments = build.comments.filter((c) => !idsToRemove.includes(c._id.toString()));
 
     await build.save();
+
+    // 🔔 Send notification if ADMIN deletes someone else's comment
+    if (isAdmin && !isAuthor) {
+      const commentAuthor = await User.findById(commentToDelete.author);
+      if (commentAuthor) {
+        const notification = new Notification({
+          userId: commentAuthor._id,
+          buildId: build._id,
+          pixelRigLink: build.pixelRigLink,
+          message: `❌ Your comment on "${build.title}" was deleted by an admin.${reason ? ` Reason: ${reason}` : ""}`,
+          type: "comment-deletion",
+          seen: false,
+        });
+        await notification.save();
+
+        global?.io?.emit("notifications-updated", commentAuthor._id); // If using socket.io
+      }
+    }
+
     res.json({ message: "Comment and its replies deleted." });
+
   } catch (err) {
     console.error("❌ Delete comment error:", err.message);
     res.status(500).json({ message: "Error deleting comment" });
   }
 });
 
-
-
-
-
-
-// DELETE a build
-router.delete("/:pixelRigLink", async (req, res) => {
+// Correct single route: delete a build by ID (Admin or Owner)
+router.delete("/id/:buildId", async (req, res) => {
   try {
-    const build = await Build.findOne({ pixelRigLink: req.params.pixelRigLink });
+    const { buildId } = req.params;
+    const reason = req.query.reason || "";
+
+    const authHeader = req.headers.authorization;
+    let userId = null;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.id;
+    }
+
+    const build = await Build.findById(buildId);
     if (!build) return res.status(404).json({ message: "Build not found" });
 
+    const buildOwner = await User.findById(build.user);
+    const requestingUser = await User.findById(userId);
+
+    const isAdmin = requestingUser?.isAdmin;
+    const isOwner = build.user.toString() === userId;
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({ message: "Not authorized to delete this build" });
+    }
+
+    if (buildOwner && isAdmin) {
+      const notification = new Notification({
+        userId: buildOwner._id,
+        buildId: build._id,
+        pixelRigLink: build.pixelRigLink,
+        message: `❌ Your build "${build.title}" was deleted by an admin.${reason ? ` Reason: ${reason}` : ""}`,
+        type: "build-deletion",
+        seen: false,
+      });
+      await notification.save();
+
+      // Optional real-time update
+      global?.io?.emit("notifications-updated", buildOwner._id);
+    }
+
     await build.deleteOne();
-    res.json({ message: "Build deleted successfully" });
+
+    res.json({ message: "Build deleted successfully." });
+
   } catch (err) {
-    console.error("❌ Failed to delete build:", err);
+    console.error("❌ Failed to delete build:", err.message);
     res.status(500).json({ message: "Failed to delete build" });
   }
 });
+
+
+
+
 
 export default router;

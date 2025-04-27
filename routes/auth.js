@@ -50,6 +50,11 @@ router.post('/login', async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: 'Invalid credentials' });
 
+    // 🛑 Check if user is active
+    if (user.isActive === false) {
+      return res.status(403).json({ message: 'Your account has been deactivated. Please contact support.' });
+    }
+
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(400).json({ message: 'Invalid credentials' });
 
@@ -86,12 +91,19 @@ router.get('/me', async (req, res) => {
     const user = await User.findById(decoded.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    res.json(user);
+    res.json({
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      isAdmin: user.isAdmin,
+      createdAt: user.createdAt, // <-- EXPLICIT
+    });
   } catch (err) {
     console.error('❌ Token error:', err.message);
     res.status(401).json({ message: 'Invalid token' });
   }
 });
+
 
 
 // 📧 FORGOT PASSWORD
