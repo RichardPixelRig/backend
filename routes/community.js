@@ -219,6 +219,26 @@ router.post('/:id/reply', async (req, res) => {
 
 
 // Delete a thread and its replies
+// DELETE a thread and its replies
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const thread = await Thread.findById(id);
+    if (!thread) return res.status(404).json({ message: "Thread not found" });
+
+    // Delete replies related to this thread
+    await Reply.deleteMany({ threadId: id });
+
+    await thread.deleteOne();
+
+    res.json({ message: "Thread and its replies deleted successfully." });
+  } catch (err) {
+    console.error("❌ Failed to delete thread:", err.message);
+    res.status(500).json({ message: "Failed to delete thread", error: err.message });
+  }
+});
 
 
 // DELETE a build by ID (with optional reason and notification)
