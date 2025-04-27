@@ -11,7 +11,7 @@ import adminRoutes from "./routes/admin.js";  // Adjust path if needed
 import Visit from "./models/Visit.js"; // import Visit model
 import visitRoutes from "./routes/visit.js";
 import usersRouter from './routes/users.js'; // Adjust path if needed
-import challengeRoutes from "./routes/Challenge.js";
+import challengeRoutes from "./routes/challenge.js";
 dotenv.config();
 
 const app = express();
