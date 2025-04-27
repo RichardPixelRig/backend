@@ -5,7 +5,7 @@ import Reply from "../models/Reply.js";
 import Build from "../models/Build.js";
 import Notification from "../models/Notifications.js";
 import Visit from "../models/Visit.js";
-import ChallengeEntry from "../models/ChallengeEntry.js"; // ✅
+import ChallengeEntry from "../models/challengeEntry.js"; // ✅
 
 const router = express.Router();
 
