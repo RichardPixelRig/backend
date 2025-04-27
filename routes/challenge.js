@@ -1,6 +1,6 @@
 // routes/challenge.js
 import express from "express";
-import ChallengeEntry from "../models/challengeEntry.js";
+import ChallengeEntry from "../models/ChallengeEntry.js";
 import Notification from "../models/Notifications.js";
 
 const router = express.Router();
