@@ -1,11 +1,13 @@
-// utils/profanityFilter.js
-import Filter from 'bad-words';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+const Filter = require('bad-words');
 
 const filter = new Filter();
 
-// OPTIONAL: customize it if needed
-filter.removeWords('hell', 'ass'); // ⬅️ if you want to allow words
-filter.addWords('noob', 'scrub');  // ⬅️ add your own custom bad words
+// OPTIONAL: customize
+filter.removeWords('hell', 'ass'); // optional allow list
+filter.addWords('noob', 'scrub');  // optional blocklist
 
 export function containsProfanity(text = '') {
   if (!text) return false;
