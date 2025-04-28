@@ -223,15 +223,38 @@ router.post('/:id/reply', async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { reason } = req.body;
+    const { username } = req.body; // 👈 You already send this from frontend
 
     const thread = await Thread.findById(id);
     if (!thread) return res.status(404).json({ message: "Thread not found" });
 
-    // Delete replies related to this thread
+    const requestingUser = await User.findOne({ username });
+    if (!requestingUser) return res.status(401).json({ message: "Unauthorized" });
+
+    const isAdmin = requestingUser.isAdmin;
+    const isAuthor = thread.author === username;
+
+    const threadOwner = await User.findOne({ username: thread.author });
+
+    // Delete all replies associated with the thread
     await Reply.deleteMany({ threadId: id });
 
     await thread.deleteOne();
+
+    // 🛎️ Send notification if an ADMIN deleted someone else's thread
+    if (isAdmin && !isAuthor && threadOwner) {
+      const notification = new Notification({
+        userId: threadOwner._id,
+        threadId: thread._id,
+        message: `❌ Your thread "${thread.title}" was deleted by an admin.`,
+        type: "thread-deletion",
+        seen: false,
+      });
+      await notification.save();
+
+      // (optional) Real-time notification
+      global?.io?.emit("notifications-updated", threadOwner._id);
+    }
 
     res.json({ message: "Thread and its replies deleted successfully." });
   } catch (err) {
@@ -239,6 +262,7 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ message: "Failed to delete thread", error: err.message });
   }
 });
+
 
 
 // DELETE a build by ID (with optional reason and notification)
