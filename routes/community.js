@@ -223,25 +223,35 @@ router.post('/:id/reply', async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { username } = req.body; // 👈 You already send this from frontend
+    const { username } = req.body;
+
+    const authHeader = req.headers.authorization;
+    let userId = null;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      userId = decoded.id;
+    }
+
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const requestingUser = await User.findById(userId);
+    if (!requestingUser) return res.status(401).json({ message: "Unauthorized" });
+
+    const isAdmin = requestingUser.isAdmin;
+    const isAuthor = username === requestingUser.username;
 
     const thread = await Thread.findById(id);
     if (!thread) return res.status(404).json({ message: "Thread not found" });
 
-    const requestingUser = await User.findOne({ username });
-    if (!requestingUser) return res.status(401).json({ message: "Unauthorized" });
-
-    const isAdmin = requestingUser.isAdmin;
-    const isAuthor = thread.author === username;
-
     const threadOwner = await User.findOne({ username: thread.author });
 
-    // Delete all replies associated with the thread
+    // Delete replies related to thread
     await Reply.deleteMany({ threadId: id });
-
     await thread.deleteOne();
 
-    // 🛎️ Send notification if an ADMIN deleted someone else's thread
+    // If admin deleted and not the owner, notify the thread owner
     if (isAdmin && !isAuthor && threadOwner) {
       const notification = new Notification({
         userId: threadOwner._id,
@@ -251,12 +261,10 @@ router.delete("/:id", async (req, res) => {
         seen: false,
       });
       await notification.save();
-
-      // (optional) Real-time notification
       global?.io?.emit("notifications-updated", threadOwner._id);
     }
 
-    res.json({ message: "Thread and its replies deleted successfully." });
+    res.json({ message: "Thread and replies deleted successfully." });
   } catch (err) {
     console.error("❌ Failed to delete thread:", err.message);
     res.status(500).json({ message: "Failed to delete thread", error: err.message });
