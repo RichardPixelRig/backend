@@ -332,6 +332,82 @@ if (parentCommentId) {
 
 
 
+// PATCH edit a comment (author only, within 15 minutes)
+router.patch("/:pixelRigLink/comments/:commentId/like", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ message: "Unauthorized" });
+    const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const build = await Build.findOne({ pixelRigLink: req.params.pixelRigLink });
+    if (!build) return res.status(404).json({ message: "Build not found" });
+
+    const comment = build.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
+
+    const userObjId = new mongoose.Types.ObjectId(userId);
+    const alreadyLiked = comment.likes.some(id => id.toString() === userId);
+
+    if (alreadyLiked) {
+      comment.likes = comment.likes.filter(id => id.toString() !== userId);
+    } else {
+      comment.likes.push(userObjId);
+      if (comment.author.toString() !== userId) {
+        const author = await User.findById(comment.author);
+        if (author) {
+          await new Notification({
+            userId: author._id,
+            buildId: build._id,
+            pixelRigLink: build.pixelRigLink,
+            commentId: comment._id,
+            message: `Someone liked your comment on "${build.title}"`,
+            type: "comment-like",
+            seen: false,
+          }).save();
+        }
+      }
+    }
+
+    await build.save();
+    res.json({ likes: comment.likes.length, liked: !alreadyLiked });
+  } catch (err) {
+    console.error("❌ Like comment error:", err.message);
+    res.status(500).json({ message: "Failed to like comment" });
+  }
+});
+
+router.patch("/:pixelRigLink/comments/:commentId", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text?.trim()) return res.status(400).json({ message: "Text required" });
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) return res.status(401).json({ message: "Unauthorized" });
+    const decoded = jwt.verify(authHeader.split(" ")[1], process.env.JWT_SECRET);
+    const userId = decoded.id;
+
+    const build = await Build.findOne({ pixelRigLink: req.params.pixelRigLink });
+    if (!build) return res.status(404).json({ message: "Build not found" });
+
+    const comment = build.comments.id(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
+    if (comment.author.toString() !== userId) return res.status(403).json({ message: "Not your comment" });
+
+    const ageMinutes = (Date.now() - new Date(comment.createdAt)) / 60000;
+    if (ageMinutes > 15) return res.status(403).json({ message: "Comments can only be edited within 15 minutes of posting" });
+
+    comment.text = text.trim();
+    comment.editedAt = new Date();
+    await build.save();
+
+    res.json({ message: "Comment updated", editedAt: comment.editedAt });
+  } catch (err) {
+    console.error("❌ Edit comment error:", err.message);
+    res.status(500).json({ message: "Failed to edit comment" });
+  }
+});
+
 // DELETE a comment and its nested replies
 // DELETE a comment and its nested replies
 router.delete("/:pixelRigLink/comments/:commentId", async (req, res) => {
