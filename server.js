@@ -13,6 +13,7 @@ import visitRoutes from "./routes/visit.js";
 import usersRouter from './routes/users.js'; // Adjust path if needed
 import challengeRoutes from "./routes/challenge.js";
 import fpsReportRoutes from "./routes/fpsReports.js";
+import savedBuildRoutes from "./routes/savedBuilds.js";
 dotenv.config();
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/api/users', usersRouter);  // ✅ MOUNT users router properly
 app.use("/api/visit", visitRoutes);
 app.use("/api/challenge", challengeRoutes);
 app.use("/api/fps-reports", fpsReportRoutes);
+app.use("/api/saved-builds", savedBuildRoutes);
 app.use(async (req, res, next) => {
   try {
     if (req.method === "GET") {
