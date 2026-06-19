@@ -20,6 +20,17 @@ router.get("/", auth, async (req, res) => {
   res.json(builds);
 });
 
+// GET /api/saved-builds/public/:id — no auth, powers shareable links
+router.get("/public/:id", async (req, res) => {
+  try {
+    const build = await SavedBuild.findById(req.params.id).populate("user", "username");
+    if (!build) return res.status(404).json({ message: "Not found" });
+    res.json(build);
+  } catch {
+    res.status(400).json({ message: "Invalid build link" });
+  }
+});
+
 // POST /api/saved-builds
 router.post("/", auth, async (req, res) => {
   const { name, parts, totalCost, game, resolution, budget } = req.body;
