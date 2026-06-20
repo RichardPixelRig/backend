@@ -14,6 +14,7 @@ import usersRouter from './routes/users.js'; // Adjust path if needed
 import challengeRoutes from "./routes/challenge.js";
 import fpsReportRoutes from "./routes/fpsReports.js";
 import savedBuildRoutes from "./routes/savedBuilds.js";
+import awinFeedRoutes from "./routes/awinFeed.js";
 dotenv.config();
 
 const app = express();
@@ -35,6 +36,7 @@ app.use("/api/visit", visitRoutes);
 app.use("/api/challenge", challengeRoutes);
 app.use("/api/fps-reports", fpsReportRoutes);
 app.use("/api/saved-builds", savedBuildRoutes);
+app.use("/api/awin-feed", awinFeedRoutes);
 app.use(async (req, res, next) => {
   try {
     if (req.method === "GET") {
