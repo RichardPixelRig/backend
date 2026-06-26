@@ -6,6 +6,13 @@ const buildSchema = new mongoose.Schema({
   image: String,
   description: String,
   parts: String,
+  // Structured parts (the actual selected components) for an interactive
+  // parts list, buy links, and "open in builder". Optional — older builds
+  // and free-text submissions just use the `parts` string above.
+  partsData: { type: mongoose.Schema.Types.Mixed, default: null },
+  totalCost: { type: Number, default: null },
+  game: { type: String, default: null },
+  resolution: { type: String, default: null },
   pixelRigLink: {
     type: String,
     unique: true,

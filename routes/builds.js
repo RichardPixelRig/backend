@@ -95,7 +95,7 @@ import slugify from "slugify"; // install if needed: npm i slugify
 
 router.post("/", async (req, res) => {
   try {
-    const { title, image, description, parts, userId } = req.body;
+    const { title, image, description, parts, partsData, totalCost, game, resolution, userId } = req.body;
 
     // 🚫 Check for inappropriate content
     if (
@@ -115,6 +115,10 @@ router.post("/", async (req, res) => {
       image,
       description,
       parts,
+      partsData: partsData || null,
+      totalCost: totalCost || null,
+      game: game || null,
+      resolution: resolution || null,
       pixelRigLink,
       user: userId,
       createdAt: new Date(),
