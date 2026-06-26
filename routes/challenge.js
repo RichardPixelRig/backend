@@ -47,7 +47,31 @@ router.get("/submissions", async (req, res) => {
     }
   });
   
-  
+
+// Delete (soft) a challenge entry — owner or admin only
+router.delete("/delete/:entryId", async (req, res) => {
+    const { userId, isAdmin, reason } = req.body;
+
+    try {
+      const entry = await ChallengeEntry.findById(req.params.entryId);
+      if (!entry) return res.status(404).json({ message: "Entry not found" });
+
+      const isOwner = entry.user?.toString() === userId;
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ message: "Not allowed to delete this entry" });
+      }
+
+      entry.deleted = true;
+      if (reason) entry.deletedReason = reason;
+      await entry.save();
+
+      res.json({ message: "Entry deleted" });
+    } catch (err) {
+      console.error("❌ Error deleting entry:", err);
+      res.status(500).json({ message: "Failed to delete entry" });
+    }
+  });
+
 // Vote on a challenge entry
 // Vote on a challenge entry
 router.post("/vote/:entryId", async (req, res) => {
