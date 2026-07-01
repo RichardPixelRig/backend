@@ -11,21 +11,30 @@ export function parseAwinCSV(csvText) {
     if (values.length === 0) continue;
 
     const product = {};
-    headers.forEach((header, idx) => {
-      const value = values[idx]?.trim() || "";
+    const row = {};
+    headers.forEach((header, idx) => { row[header] = values[idx]?.trim() || ""; });
 
-      // Map Awin column names to our standard fields
-      if (header.includes("ean") || header.includes("gtin")) product.ean = value;
-      else if (header.includes("mpn")) product.mpn = value;
-      else if (header.includes("product_name") || header.includes("name")) product.name = value;
-      else if (header.includes("price") || header.includes("buy_price")) {
-        product.price = parseFloat(value) || null;
-      } else if (header.includes("url") || header.includes("product_url")) product.buyUrl = value;
-      else if (header.includes("stock") || header.includes("in_stock")) {
-        product.inStock = value.toLowerCase() === "yes" || value === "1" || value.toLowerCase() === "true";
-      } else if (header.includes("sku")) product.sku = value;
-      else if (header.includes("product_id") || header.includes("id")) product.productId = value;
-    });
+    // ── Identifiers ──
+    product.ean = row["ean"] || row["gtin"] || firstMatch(row, ["ean", "gtin"]) || "";
+    product.mpn = row["mpn"] || row["product_model"] || firstMatch(row, ["mpn"]) || "";
+    product.name = row["product_name"] || firstMatch(row, ["product_name", "name"]) || "";
+    product.sku = row["merchant_product_id"] || firstMatch(row, ["sku"]) || "";
+    product.productId = row["aw_product_id"] || row["merchant_product_id"] || firstMatch(row, ["product_id"]) || "";
+
+    // ── Price: prefer the actual selling price over rrp/base ──
+    const priceRaw =
+      row["store_price"] || row["search_price"] || row["display_price"] ||
+      row["saleprice"] || row["price"] || firstMatch(row, ["price"]) || "";
+    product.price = parseFloat(String(priceRaw).replace(/[^0-9.]/g, "")) || null;
+
+    // ── Buy link: prefer the tracked affiliate deep link ──
+    product.buyUrl =
+      row["aw_deep_link"] || row["merchant_deep_link"] || row["deep_link"] ||
+      row["product_url"] || firstMatch(row, ["deep_link", "url"]) || "";
+
+    // ── Stock ──
+    const stockRaw = (row["in_stock"] || row["stock"] || firstMatch(row, ["stock"]) || "").toLowerCase();
+    product.inStock = stockRaw === "" ? true : (stockRaw === "yes" || stockRaw === "1" || stockRaw === "true");
 
     if (product.ean || product.mpn) {
       products.push(product);
@@ -33,6 +42,14 @@ export function parseAwinCSV(csvText) {
   }
 
   return products;
+}
+
+// Return the value of the first header that contains any of the given substrings.
+function firstMatch(row, substrings) {
+  for (const header of Object.keys(row)) {
+    if (substrings.some((s) => header.includes(s)) && row[header]) return row[header];
+  }
+  return "";
 }
 
 // Parse CSV line respecting quoted fields
@@ -70,10 +87,9 @@ export function validateAwinCSV(csvText) {
   if (lines.length < 2) return { valid: false, error: "CSV is empty" };
 
   const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
-  const hasEanOrMpn = headers.some((h) => h.includes("ean") || h.includes("mpn") || h.includes("gtin"));
+  const hasEanOrMpn = headers.some((h) => h.includes("ean") || h.includes("mpn") || h.includes("gtin") || h.includes("product_model"));
   const hasPrice = headers.some((h) => h.includes("price"));
-  const hasUrl = headers.some((h) => h.includes("url"));
-  const hasName = headers.some((h) => h.includes("name"));
+  const hasUrl = headers.some((h) => h.includes("url") || h.includes("deep_link"));
 
   if (!hasEanOrMpn) {
     return { valid: false, error: "Missing EAN/MPN column" };
@@ -82,7 +98,7 @@ export function validateAwinCSV(csvText) {
     return { valid: false, error: "Missing price column" };
   }
   if (!hasUrl) {
-    return { valid: false, error: "Missing product URL column" };
+    return { valid: false, error: "Missing product URL / deep link column" };
   }
 
   return { valid: true, rowCount: lines.length - 1 };

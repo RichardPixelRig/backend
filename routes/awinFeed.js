@@ -25,7 +25,7 @@ router.post("/ingest", async (req, res) => {
       });
     }
 
-    if (!["scan", "currys", "overclockers"].includes(retailer)) {
+    if (!["scan", "currys", "overclockers", "box"].includes(retailer)) {
       return res.status(400).json({ error: "Invalid retailer" });
     }
 
